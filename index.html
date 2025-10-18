@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chef RPG Pâtissière Ingredient Tracker (Enhanced)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --color-primary: #f4a2b9;
+            --color-accent: #e9d5ff;
+            --color-bg: #fdf6f7;
+            --color-card-bg: #ffffff;
+            --color-text: #1f2937;
+            --color-text-secondary: #6b7280;
+            --color-border: #e5e7eb;
+        }
+        
+        [data-theme="dark"] {
+            --color-primary: #f4a2b9;
+            --color-accent: #d8a7ca;
+            --color-bg: #2d1b2e;
+            --color-card-bg: #3d2738;
+            --color-text: #fce7f3;
+            --color-text-secondary: #f3b8d8;
+            --color-border: #5c3d54;
+        }
+        
+        body {
+            font-family: 'Figtree', sans-serif; 
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .tracker-card {
+            background-color: var(--color-card-bg);
+            transition: background-color 0.3s;
+        }
+        .tracker-button {
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .stocked-btn {
+            background-color: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+        .needed-btn {
+            background-color: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+        [data-theme="dark"] .needed-btn {
+            background-color: #5c1f2e;
+            color: #fca5a5;
+            border: 1px solid #7d2d3d;
+        }
+        .stocked-btn:hover {
+            background-color: #e68fa7;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.15);
+        }
+        .needed-btn:hover {
+            background-color: #fee2e2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.15);
+        }
+        [data-theme="dark"] .needed-btn:hover {
+            background-color: #7d2d3d;
+        }
+        .rarity-tab {
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            border-radius: 0.5rem 0.5rem 0 0;
+            transition: all 0.15s;
+            border-bottom: 2px solid transparent;
+            color: var(--color-text-secondary);
+        }
+        .rarity-tab.active {
+            border-bottom-color: var(--color-primary);
+            color: var(--color-primary);
+            background-color: var(--color-card-bg);
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+        .recipe-checkbox {
+            width: 1.25rem;
+            height: 1.25rem;
+            accent-color: var(--color-primary);
+            cursor: pointer;
+        }
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { 
+            background-color: var(--color-primary); 
+            border-radius: 4px; 
+        }
+        ::-webkit-scrollbar-track { 
+            background-color: var(--color-bg); 
+        }
+        .stat-card {
+            background: linear-gradient(135deg, var(--color-card-bg) 0%, var(--color-bg) 100%);
+            border: 1px solid var(--color-border);
+        }
+    </style>
+
+    <script>
+        const STORAGE_KEY = 'patissierInventory';
+        const NOTES_KEY = 'patissierNotes';
+        const VENDOR_KEY = 'patissierVendor';
+        const THEME_KEY = 'patissierTheme';
+        
+        let inventory = {};
+        let ingredientNotes = {};
+        let ingredientVendors = {};
+        let activeRarityFilter = 'C';
+        let selectedRecipes = new Set();
+
+        const RECIPES = [
+            { id: 'bakedapple', name: "Baked Cinnamon Apple", rarity: 'C', ingredients: ["Apple", "Cinnamon", "Sugar", "Butter"] },
+            { id: 'waffles', name: "Berry Blast Waffles", rarity: 'C', ingredients: ["Wheat", "Egg", "Milk", "Sugar", "Cranberry", "Grapes"] },
+            { id: 'applepie', name: "Apple Pie", rarity: 'C', ingredients: ["Apple", "Flour", "Cinnamon", "Sugar", "Butter"] },
+            { id: 'donut', name: "Apple Cider Doughnuts", rarity: 'R', ingredients: ["Apple", "Cider", "Flour", "Cinnamon", "Sugar"] },
+            { id: 'tart', name: "Cherry Chocolate Tart", rarity: 'R', ingredients: ["Cherry", "Dark Chocolate", "Flour", "Butter", "Egg"] },
+            { id: 'cocacake', name: "Coco Cake", rarity: 'R', ingredients: ["Coconut", "Cocoa Bean", "Sugar", "Cream", "Egg"] },
+            { id: 'grapetart', name: "Grape Tart", rarity: 'R', ingredients: ["Grapes", "Flour", "Butter", "Sugar", "Egg"] },
+            { id: 'mangocupcake', name: "Mango Cupcake", rarity: 'R', ingredients: ["Mango", "Flour", "Sugar", "Egg", "Cream"] },
+            { id: 'eclair', name: "Coffee Eclair", rarity: 'E', ingredients: ["Coffee Beans", "Cream", "Flour", "Egg", "Sugar"] },
+            { id: 'macaron', name: "Macaroons", rarity: 'E', ingredients: ["Egg", "Almond", "Sugar", "Honey"] },
+            { id: 'cremebrulee', name: "Raspberry Crème Brûlée", rarity: 'E', ingredients: ["Raspberry", "Cream", "Egg", "Sugar", "Vanilla Bean"] },
+            { id: 'tiramisu', name: "Cranberry Tiramisu", rarity: 'E', ingredients: ["Cranberry", "Coffee Beans", "Egg", "Cream", "Sugar", "Mascarpone"] },
+            { id: 'matchacake', name: "Matcha Cake", rarity: 'E', ingredients: ["Matcha Powder", "Flour", "Sugar", "Cream", "Egg"] },
+            { id: 'sunblaze', name: "Sunblaze Cake (Legendary)", rarity: 'L', ingredients: ["Star Fruit", "Sugar", "Flour", "Egg", "Cream"] }
+        ];
+
+        const ALL_INGREDIENTS = Array.from(new Set(RECIPES.flatMap(r => r.ingredients))).sort();
+
+        let ingredientsContainer, shoppingListContainer, trackerContent, ingredientDirectory, recipeContainer, rarityTabsContainer;
+        let statsContainer, multiRecipeContainer;
+
+        // Storage functions
+        function loadInventory() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            try { inventory = stored ? JSON.parse(stored) : {}; } 
+            catch (e) { inventory = {}; }
+        }
+
+        function saveInventory() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+        }
+
+        function loadNotes() {
+            const stored = localStorage.getItem(NOTES_KEY);
+            try { ingredientNotes = stored ? JSON.parse(stored) : {}; } 
+            catch (e) { ingredientNotes = {}; }
+        }
+
+        function saveNotes() {
+            localStorage.setItem(NOTES_KEY, JSON.stringify(ingredientNotes));
+        }
+
+        function loadVendors() {
+            const stored = localStorage.getItem(VENDOR_KEY);
+            try { ingredientVendors = stored ? JSON.parse(stored) : {}; } 
+            catch (e) { ingredientVendors = {}; }
+        }
+
+        function saveVendors() {
+            localStorage.setItem(VENDOR_KEY, JSON.stringify(ingredientVendors));
+        }
+
+        function loadTheme() {
+            const theme = localStorage.getItem(THEME_KEY) || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        function saveTheme(theme) {
+            localStorage.setItem(THEME_KEY, theme);
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        // Theme toggle
+        window.toggleTheme = () => {
+            const current = document.documentElement.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            saveTheme(newTheme);
+            updateThemeIcon();
+        };
+
+        function updateThemeIcon() {
+            const btn = document.getElementById('themeToggle');
+            const theme = document.documentElement.getAttribute('data-theme');
+            if (btn) {
+                btn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
+            }
+        }
+
+        // Core functions
+        window.toggleIngredient = (ingredientName) => {
+            const isStocked = inventory[ingredientName] !== true;
+            inventory[ingredientName] = isStocked;
+
+            const detail = document.getElementById('blockedRecipesDetail');
+            const wasOpen = detail && !detail.classList.contains('hidden');
+
+            saveInventory();
+            renderTracker();
+
+            if (wasOpen) {
+                const detailAfter = document.getElementById('blockedRecipesDetail');
+                const buttonAfter = document.getElementById('toggleDetailButton');
+                if (detailAfter && buttonAfter) {
+                    detailAfter.classList.remove('hidden');
+                    buttonAfter.textContent = 'Hide Recipe Details';
+                }
+            }
+        };
+
+        window.setRarityFilter = (filter) => {
+            activeRarityFilter = filter;
+            selectedRecipes.clear();
+            renderRecipes();
+            renderRarityTabs();
+            renderShoppingList();
+            renderMultiRecipePlanner();
+        };
+
+        window.toggleDetailView = () => {
+            const detail = document.getElementById('blockedRecipesDetail');
+            const button = document.getElementById('toggleDetailButton');
+            if (!detail || !button) return;
+
+            if (detail.classList.contains('hidden')) {
+                detail.classList.remove('hidden');
+                button.textContent = 'Hide Recipe Details';
+            } else {
+                detail.classList.add('hidden');
+                button.textContent = 'Show Missing Ingredient by Recipe';
+            }
+        };
+
+        window.openIngredientModal = (ingredient) => {
+            const modal = document.getElementById('ingredientModal');
+            const modalTitle = document.getElementById('modalIngredientName');
+            const notesTextarea = document.getElementById('ingredientNotesInput');
+            const vendorInput = document.getElementById('ingredientVendorInput');
+            
+            modalTitle.textContent = ingredient;
+            notesTextarea.value = ingredientNotes[ingredient] || '';
+            vendorInput.value = ingredientVendors[ingredient] || '';
+            
+            modal.classList.remove('hidden');
+            
+            window.currentEditingIngredient = ingredient;
+        };
+
+        window.closeIngredientModal = () => {
+            document.getElementById('ingredientModal').classList.add('hidden');
+        };
+
+        window.saveIngredientDetails = () => {
+            const ingredient = window.currentEditingIngredient;
+            const notes = document.getElementById('ingredientNotesInput').value;
+            const vendor = document.getElementById('ingredientVendorInput').value;
+            
+            if (notes.trim()) {
+                ingredientNotes[ingredient] = notes;
+            } else {
+                delete ingredientNotes[ingredient];
+            }
+            
+            if (vendor.trim()) {
+                ingredientVendors[ingredient] = vendor;
+            } else {
+                delete ingredientVendors[ingredient];
+            }
+            
+            saveNotes();
+            saveVendors();
+            closeIngredientModal();
+            renderIngredientsList();
+        };
+
+        window.toggleRecipeSelection = (recipeId) => {
+            if (selectedRecipes.has(recipeId)) {
+                selectedRecipes.delete(recipeId);
+            } else {
+                selectedRecipes.add(recipeId);
+            }
+            renderRecipes();
+            renderMultiRecipePlanner();
+        };
+
+        // Calculate stats
+        function calculateStats() {
+            const totalIngredients = ALL_INGREDIENTS.length;
+            const stockedCount = ALL_INGREDIENTS.filter(ing => inventory[ing] === true).length;
+            const percentageStocked = totalIngredients > 0 ? Math.round((stockedCount / totalIngredients) * 100) : 0;
+            
+            const ingredientUsage = {};
+            RECIPES.forEach(recipe => {
+                recipe.ingredients.forEach(ing => {
+                    ingredientUsage[ing] = (ingredientUsage[ing] || 0) + 1;
+                });
+            });
+            
+            const mostNeeded = Object.entries(ingredientUsage)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3);
+            
+            return { totalIngredients, stockedCount, percentageStocked, mostNeeded };
+        }
+
+        // Render functions
+        function renderTracker() {
+            if (ingredientDirectory) {
+                ingredientDirectory.value = ALL_INGREDIENTS.join(', ');
+            }
+            
+            renderStats();
+            renderIngredientsList();
+            renderShoppingList();
+            renderRarityTabs();
+            renderRecipes();
+            renderMultiRecipePlanner();
+            updateThemeIcon();
+            
+            trackerContent.classList.remove('hidden');
+        }
+
+        function renderStats() {
+            if (!statsContainer) return;
+            
+            const stats = calculateStats();
+            
+            statsContainer.innerHTML = `
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div class="stat-card p-4 rounded-xl shadow-md">
+                        <p class="text-sm font-medium opacity-75">Inventory Stocked</p>
+                        <p class="text-3xl font-bold mt-1" style="color: var(--color-primary);">${stats.percentageStocked}%</p>
+                        <p class="text-xs opacity-60 mt-1">${stats.stockedCount} / ${stats.totalIngredients} ingredients</p>
+                    </div>
+                    <div class="stat-card p-4 rounded-xl shadow-md col-span-1 sm:col-span-2">
+                        <p class="text-sm font-medium opacity-75 mb-2">Most Used Ingredients</p>
+                        <div class="flex flex-wrap gap-2">
+                            ${stats.mostNeeded.map(([ing, count]) => `
+                                <span class="px-3 py-1 text-sm font-medium rounded-full" style="background-color: var(--color-primary); color: white;">
+                                    ${ing} <span class="opacity-75">(${count} recipes)</span>
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderIngredientsList() {
+            if (!ingredientsContainer) return;
+            ingredientsContainer.innerHTML = '';
+            
+            ALL_INGREDIENTS.forEach(ingredient => {
+                const isStocked = inventory[ingredient] === true;
+                const buttonClass = isStocked ? 'stocked-btn' : 'needed-btn';
+                const buttonText = isStocked ? '✓' : '✗';
+                const hasNotes = ingredientNotes[ingredient] || ingredientVendors[ingredient];
+                
+                ingredientsContainer.innerHTML += `
+                    <div class="relative group">
+                        <button onclick="toggleIngredient('${ingredient}')" 
+                                class="tracker-button text-xs font-medium px-2 py-2 rounded-lg ${buttonClass} hover:opacity-90 text-center transition-all w-full">
+                            <div class="truncate">${ingredient}</div>
+                        </button>
+                        <button onclick="openIngredientModal('${ingredient}')" 
+                                class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${hasNotes ? '!opacity-100' : ''}"
+                                style="background-color: var(--color-accent);">
+                            ℹ️
+                        </button>
+                    </div>
+                `;
+            });
+        }
+        
+        function renderRarityTabs() {
+            if (!rarityTabsContainer) return;
+            
+            const counts = RECIPES.reduce((acc, recipe) => {
+                acc[recipe.rarity] = (acc[recipe.rarity] || 0) + 1;
+                return acc;
+            }, {});
+
+            const rarities = [
+                { id: 'C', name: `Common (${counts['C'] || 0})` },
+                { id: 'R', name: `Rare (${counts['R'] || 0})` },
+                { id: 'E', name: `Epic (${counts['E'] || 0})` },
+                { id: 'L', name: `Legendary (${counts['L'] || 0})` }
+            ];
+
+            rarityTabsContainer.innerHTML = rarities.map(r => `
+                <button onclick="setRarityFilter('${r.id}')" 
+                        class="rarity-tab ${activeRarityFilter === r.id ? 'active' : ''}">
+                    ${r.name}
+                </button>
+            `).join('');
+        }
+
+        function renderRecipes() {
+            if (!recipeContainer) return;
+            recipeContainer.innerHTML = '';
+
+            const filteredRecipes = RECIPES.filter(recipe => recipe.rarity === activeRarityFilter);
+            const rarityMap = { 'C': 'Common', 'R': 'Rare', 'E': 'Epic', 'L': 'Legendary' };
+
+            filteredRecipes.forEach(recipe => {
+                const isSelected = selectedRecipes.has(recipe.id);
+                const canMake = recipe.ingredients.every(ing => inventory[ing] === true);
+                
+                recipeContainer.innerHTML += `
+                    <div class="p-3 tracker-card rounded-lg border shadow-md" style="border-color: ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'};">
+                        <div class="flex items-start gap-2">
+                            <input type="checkbox" 
+                                   class="recipe-checkbox mt-1" 
+                                   ${isSelected ? 'checked' : ''}
+                                   onchange="toggleRecipeSelection('${recipe.id}')">
+                            <div class="flex-1">
+                                <p class="font-bold" style="color: var(--color-text);">
+                                    ${recipe.name} 
+                                    ${canMake ? '<span class="text-green-500 text-sm">✓ Ready</span>' : ''}
+                                </p>
+                                <p class="text-xs mt-1" style="color: var(--color-text-secondary);">
+                                    ${recipe.ingredients.map(ing => {
+                                        const stocked = inventory[ing] === true;
+                                        return `<span class="${stocked ? 'text-green-600' : 'text-red-600'}">${ing}</span>`;
+                                    }).join(', ')}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function renderMultiRecipePlanner() {
+            if (!multiRecipeContainer) return;
+            
+            if (selectedRecipes.size === 0) {
+                multiRecipeContainer.innerHTML = `
+                    <div class="text-center p-6 tracker-card rounded-xl border" style="border-color: var(--color-border);">
+                        <p class="font-semibold" style="color: var(--color-text-secondary);">Select recipes using checkboxes to plan shopping</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const selectedRecipeObjects = RECIPES.filter(r => selectedRecipes.has(r.id));
+            const allIngredients = Array.from(new Set(selectedRecipeObjects.flatMap(r => r.ingredients)));
+            const neededIngredients = allIngredients.filter(ing => inventory[ing] !== true);
+            
+            multiRecipeContainer.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <p class="font-bold text-lg" style="color: var(--color-text);">
+                            Shopping for ${selectedRecipes.size} Recipe${selectedRecipes.size > 1 ? 's' : ''}
+                        </p>
+                        <button onclick="selectedRecipes.clear(); renderRecipes(); renderMultiRecipePlanner();" 
+                                class="text-sm px-3 py-1 rounded-lg" 
+                                style="background-color: var(--color-primary); color: white;">
+                            Clear Selection
+                        </button>
+                    </div>
+                    
+                    ${neededIngredients.length === 0 ? `
+                        <div class="p-4 bg-green-50 rounded-lg border-2 border-green-300">
+                            <p class="font-semibold text-green-700">You have everything! 🎉</p>
+                        </div>
+                    ` : `
+                        <p class="text-sm" style="color: var(--color-text-secondary);">
+                            Missing <span class="font-bold text-red-600">${neededIngredients.length}</span> ingredients
+                        </p>
+                        <div class="flex flex-wrap gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                            ${neededIngredients.map(ing => 
+                                `<span class="px-3 py-1 text-sm font-medium text-red-700 bg-white rounded-full shadow-sm border border-red-300">${ing}</span>`
+                            ).join('')}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderShoppingList() {
+            if (!shoppingListContainer) return;
+            shoppingListContainer.innerHTML = '';
+            
+            const filteredRecipes = RECIPES.filter(recipe => recipe.rarity === activeRarityFilter);
+            const rarityName = activeRarityFilter === 'C' ? 'Common' : activeRarityFilter === 'R' ? 'Rare' : activeRarityFilter === 'E' ? 'Epic' : 'Legendary';
+            
+            const filteredIngredients = Array.from(new Set(filteredRecipes.flatMap(r => r.ingredients)));
+            const neededIngredients = filteredIngredients.filter(ingredient => inventory[ingredient] !== true);
+            const neededCount = neededIngredients.length;
+
+            const recipesWithMissing = filteredRecipes.filter(recipe => {
+                return recipe.ingredients.some(ing => inventory[ing] !== true);
+            });
+            const blockedRecipesCount = recipesWithMissing.length;
+            
+            if (neededCount === 0) {
+                shoppingListContainer.innerHTML = `
+                    <div class="text-center p-6 bg-green-50 rounded-xl border-2 border-green-300">
+                        <p class="font-semibold text-green-700 text-lg">Fully Stocked for ${rarityName}!</p>
+                        <p class="text-sm text-green-600">You have everything needed to make all ${rarityName} recipes.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const ingredientsHtml = neededIngredients.map(ing => 
+                `<span class="px-3 py-1 text-sm font-medium text-red-700 bg-red-100 rounded-full shadow-sm">${ing}</span>`
+            ).join('');
+
+            let detailedRecipesHtml = recipesWithMissing.map(recipe => {
+                const missing = recipe.ingredients.filter(ing => inventory[ing] !== true);
+                
+                return `
+                    <div class="p-3 bg-red-100 rounded-lg border border-red-300">
+                        <p class="font-bold text-red-800">${recipe.name}</p>
+                        <p class="text-xs text-gray-700 mt-1 mb-1">Needs:</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${missing.map(ing => `<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded">${ing}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            shoppingListContainer.innerHTML = `
+                <div class="space-y-4">
+                    <p class="text-lg font-bold" style="color: var(--color-text);">Essential Haul for ${rarityName}</p>
+                    <p class="text-sm" style="color: var(--color-text-secondary);">You are currently missing <span class="font-bold text-red-600">${neededCount} unique ingredients</span> required for the <span class="font-bold">${rarityName}</span> tier recipes.</p>
+                    
+                    <div class="flex flex-wrap gap-2 p-3 bg-red-50 rounded-lg border border-red-200 shadow-inner">
+                        ${ingredientsHtml}
+                    </div>
+
+                    <p class="text-sm border-t pt-3" style="color: var(--color-text-secondary); border-color: var(--color-border);">
+                        Blocked Recipes in ${rarityName} Tier: <span class="font-semibold text-red-600">${blockedRecipesCount}</span>
+                    </p>
+
+                    ${blockedRecipesCount > 0 ? `
+                        <button id="toggleDetailButton" onclick="toggleDetailView()" class="w-full text-center px-3 py-2 text-sm font-semibold rounded-lg bg-pink-100 text-pink-700 hover:bg-pink-200 transition-colors">
+                            Show Missing Ingredient by Recipe
+                        </button>
+                        <div id="blockedRecipesDetail" class="hidden grid gap-3">
+                            ${detailedRecipesHtml}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function initializeTracker() {
+            ingredientsContainer = document.getElementById('ingredientsContainer');
+            shoppingListContainer = document.getElementById('shoppingListContainer');
+            trackerContent = document.getElementById('trackerContent');
+            ingredientDirectory = document.getElementById('ingredientDirectory');
+            recipeContainer = document.getElementById('recipeContainer');
+            rarityTabsContainer = document.getElementById('rarityTabsContainer');
+            statsContainer = document.getElementById('statsContainer');
+            multiRecipeContainer = document.getElementById('multiRecipeContainer');
+            
+            loadTheme();
+            loadInventory();
+            loadNotes();
+            loadVendors();
+            renderTracker();
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeTracker);
+    </script>
+</head>
+<body class="p-4 sm:p-8 flex justify-center min-h-screen">
+
+    <div class="w-full max-w-6xl space-y-8">
+
+        <!-- Header -->
+        <div class="text-center pb-4 border-b-2 relative" style="border-color: var(--color-primary);">
+            <button id="themeToggle" onclick="toggleTheme()" 
+                    class="absolute right-0 top-0 text-2xl p-2 rounded-lg hover:bg-opacity-10 transition-all"
+                    style="background-color: transparent;">
+                🌙
+            </button>
+            <h1 class="text-4xl sm:text-5xl font-extrabold" style="color: var(--color-text);">
+                Patissier Tracker
+            </h1>
+            <p class="text-lg mt-2" style="color: var(--color-text-secondary);">Chef RPG Ingredient Management</p>
+        </div>
+
+        <!-- Stats Dashboard -->
+        <div id="statsContainer"></div>
+
+        <!-- Main Tracker Content -->
+        <div id="trackerContent" class="hidden grid lg:grid-cols-3 gap-8">
+
+            <!-- Ingredients & Recipes (Col 1 & 2) -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <h2 class="text-3xl font-bold border-b pb-2" style="color: var(--color-text); border-color: var(--color-border);">Master Ingredient Directory</h2>
+                <p class="text-sm" style="color: var(--color-text-secondary);">Complete alphabetized list of unique ingredients currently tracked.</p>
+                <textarea id="ingredientDirectory" class="w-full p-3 h-20 text-sm border rounded-lg font-mono resize-none tracker-card" style="border-color: var(--color-border);" readonly></textarea>
+
+                <h2 class="text-3xl font-bold border-b pb-2 mt-8" style="color: var(--color-text); border-color: var(--color-border);">Kitchen Inventory</h2>
+                <p class="text-sm" style="color: var(--color-text-secondary);">Toggle ingredient status. Hover over items to add notes and vendor info. Click the ℹ️ icon to edit.</p>
+
+                <div id="ingredientsContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 tracker-card p-4 rounded-xl shadow-lg border max-h-96 overflow-y-auto" style="border-color: var(--color-border);">
+                    <!-- Ingredients List Rendered Here -->
+                </div>
+
+                <div class="mt-8">
+                    <h2 class="text-3xl font-bold pb-2" style="color: var(--color-text);">Patissier Core Recipes</h2>
+                    <p class="text-sm mb-4" style="color: var(--color-text-secondary);">Check recipes to plan multi-recipe shopping lists below.</p>
+                    
+                    <!-- Rarity Tabs -->
+                    <div id="rarityTabsContainer" class="flex border-b -mb-px rounded-t-lg overflow-x-auto" style="background-color: var(--color-bg); border-color: var(--color-border);">
+                        <!-- Tabs rendered here -->
+                    </div>
+
+                    <!-- Filtered Recipe List Container -->
+                    <div id="recipeContainer" class="grid sm:grid-cols-2 gap-4 mt-4 p-4 tracker-card rounded-b-xl shadow-lg border border-t-0" style="border-color: var(--color-border);">
+                        <!-- Filtered Recipe Cards Rendered Here -->
+                    </div>
+                </div>
+
+                <!-- Multi-Recipe Planner -->
+                <div class="mt-8">
+                    <h2 class="text-3xl font-bold border-b pb-2" style="color: var(--color-text); border-color: var(--color-border);">Multi-Recipe Planner</h2>
+                    <p class="text-sm mb-4" style="color: var(--color-text-secondary);">Combined shopping list for selected recipes.</p>
+                    <div id="multiRecipeContainer" class="tracker-card p-4 rounded-xl shadow-lg border" style="border-color: var(--color-border);">
+                        <!-- Multi-recipe planner rendered here -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Shopping List (Col 3) -->
+            <div class="lg:col-span-1 space-y-6">
+                <h2 class="text-3xl font-bold border-b pb-2" style="color: var(--color-text); border-color: var(--color-border);">Shopping List</h2>
+                
+                <div id="shoppingListContainer" class="tracker-card p-4 rounded-xl shadow-lg border-2" style="border-color: var(--color-primary);">
+                    <!-- Shopping List Rendered Here -->
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Ingredient Details Modal -->
+    <div id="ingredientModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
+        <div class="tracker-card rounded-xl shadow-2xl max-w-md w-full p-6 border" style="border-color: var(--color-border);">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modalIngredientName" class="text-2xl font-bold" style="color: var(--color-text);"></h3>
+                <button onclick="closeIngredientModal()" class="text-2xl hover:opacity-70" style="color: var(--color-text-secondary);">×</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2" style="color: var(--color-text);">Vendor / Source</label>
+                    <input type="text" id="ingredientVendorInput" 
+                           class="w-full p-2 border rounded-lg tracker-card" 
+                           style="border-color: var(--color-border);"
+                           placeholder="e.g., Market Vendor, Foraging, Spring Season">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold mb-2" style="color: var(--color-text);">Notes</label>
+                    <textarea id="ingredientNotesInput" 
+                              class="w-full p-2 border rounded-lg tracker-card h-32 resize-none" 
+                              style="border-color: var(--color-border);"
+                              placeholder="Add any notes about this ingredient..."></textarea>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="saveIngredientDetails()" 
+                            class="flex-1 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:opacity-90"
+                            style="background-color: var(--color-primary);">
+                        Save
+                    </button>
+                    <button onclick="closeIngredientModal()" 
+                            class="flex-1 px-4 py-2 rounded-lg font-semibold border transition-all hover:opacity-70"
+                            style="border-color: var(--color-border); color: var(--color-text);">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
